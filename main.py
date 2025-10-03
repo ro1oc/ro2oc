@@ -45,18 +45,38 @@ def get_config():
 def get_channel_http(channel_url):
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Cache-Control': 'max-age=0',
         'Referer': channel_url,
     }
+
     try:
+        # 发起请求并获取响应
         resp = requests.get(channel_url, headers=headers, timeout=10)
-        resp.raise_for_status()
+        resp.raise_for_status()  # 如果响应状态码不是 200，会抛出 HTTPError
         data = resp.text
+        
         # 匹配所有 HTTP/HTTPS 链接
         url_list = re.findall(r"https?://[-A-Za-z0-9+&@#/%?=~_|!:,.;]+[-A-Za-z0-9+&@#/%=~_|]", data)
         logger.info(f"{channel_url} 获取成功，提取链接数: {len(url_list)}")
-    except Exception as e:
-        logger.warning(f"{channel_url} 获取失败: {e}")
+        
+    except requests.exceptions.HTTPError as e:
+        logger.warning(f"{channel_url} HTTP 请求错误: {e}")
         url_list = []
+    except requests.exceptions.Timeout as e:
+        logger.warning(f"{channel_url} 请求超时: {e}")
+        url_list = []
+    except requests.exceptions.RequestException as e:
+        # 捕获其他请求相关的错误
+        logger.warning(f"{channel_url} 请求失败: {e}")
+        url_list = []
+    except Exception as e:
+        # 其他未处理的错误
+        logger.error(f"{channel_url} 未知错误: {e}")
+        url_list = []
+
     return url_list
 
 
