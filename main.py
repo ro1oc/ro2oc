@@ -162,26 +162,18 @@ if __name__=='__main__':
     dict_url.update({'v2订阅': new_v2_list})
     with open(path_yaml, 'w',encoding="utf-8") as f:
         data = yaml.dump(dict_url, f,allow_unicode=True)
-import requests
-
-def send_telegram_message(bot_token, chat_id, message):
-    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    data = {
-        "chat_id": chat_id,
-        "text": message,
-        "parse_mode": "Markdown"
-    }
-    response = requests.post(url, data=data)
+def send_telegram_file(bot_token, chat_id, file_path):
+    url = f"https://api.telegram.org/bot{bot_token}/sendDocument"
+    with open(file_path, "rb") as f:
+        files = {'document': f}
+        data = {'chat_id': chat_id}
+        response = requests.post(url, files=files, data=data)
     if response.status_code == 200:
-        print("✅ 消息发送成功")
+        print("✅ 文件发送成功")
     else:
-        print("❌ 消息发送失败", response.text)
-if __name__ == "__main__":
-    ...
-    # 原来的 YAML 写入完成后
-    msg = f"共筛选出：\n机场订阅：{len(new_sub_list)} 条\nClash订阅：{len(new_clash_list)} 条\nV2订阅：{len(new_v2_list)} 条"
-    send_telegram_message(
-        bot_token=os.getenv("TG_BOT_TOKEN"),
-        chat_id=os.getenv("TG_CHAT_ID"),
-        message=msg
-    )
+        print("❌ 文件发送失败", response.text)
+send_telegram_file(
+    bot_token=os.getenv("TG_BOT_TOKEN"),
+    chat_id=os.getenv("TG_CHAT_ID"),
+    file_path=path_yaml
+)
