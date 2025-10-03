@@ -32,3 +32,8 @@ jobs:
           name: updated-subscription
           path: |
             *.yaml
+      - name: Run Python script
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: python main.py
