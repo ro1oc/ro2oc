@@ -79,32 +79,39 @@ def filter_base64(text):
 
 
 @retry(tries=3, delay=5, backoff=2)
-def sub_check(url, progress_bar, semaphore):
+def check_subscription(url, progress_bar, semaphore):
+    """检查订阅链接类型并分类"""
     headers = {'User-Agent': 'ClashforWindows/0.18.1'}
 
     try:
         res = requests.get(url, headers=headers, timeout=5)
-        if res.status_code == 200:
-            info = res.headers.get('subscription-userinfo')
-            if info:
-                new_sub_list.append(url)
-                return
+        if res.status_code != 200:
+            return
 
-            if 'proxies:' in res.text:
-                new_clash_list.append(url)
-                return
-
+        if (info := res.headers.get('subscription-userinfo')):
+            new_sub_list.append(url)
+        elif 'proxies:' in res.text:
+            new_clash_list.append(url)
+        else:
             try:
                 snippet = res.text.strip()[:64]
-                padding = '=' * (-len(snippet) % 4)
+                # 使用正则表达式过滤掉非 Base64 合法字符
+                snippet = re.sub(r'[^A-Za-z0-9+/=]', '', snippet)
+                # 调试输出要解码的 Base64 字符串
+                logger.debug(f"准备解码 Base64 字符串: {snippet}")
+
+                padding = '=' * (-len(snippet) % 4)  # 补齐 Base64 填充
                 decoded_bytes = base64.b64decode(snippet + padding)
                 decoded_text = decoded_bytes.decode('utf-8', errors='ignore')
-                if filter_base64(decoded_text):
+                logger.debug(f"解码后的内容: {decoded_text}")
+
+                # 检查解码后的内容是否包含协议头
+                if is_base64_encoded(decoded_text):
                     new_v2_list.append(url)
-            except base64.binascii.Error as e:
-                logger.warning(f"Base64 解码错误 {url}: {e}")
+            except (base64.binascii.Error, ValueError) as e:
+                logger.warning(f"Base64 解码失败 {url}: {e}")
     except requests.exceptions.RequestException as e:
-        logger.debug(f"订阅检测失败 {url}: {e}")
+        logger.debug(f"订阅检查失败：{url}，原因：{e}")
     finally:
         with semaphore:
             progress_bar.update(1)
