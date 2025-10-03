@@ -97,16 +97,24 @@ def check_subscription(url, progress_bar, semaphore):
                 snippet = res.text.strip()[:64]
                 # 使用正则表达式过滤掉非 Base64 合法字符
                 snippet = re.sub(r'[^A-Za-z0-9+/=]', '', snippet)
-                # 调试输出要解码的 Base64 字符串
-                logger.debug(f"准备解码 Base64 字符串: {snippet}")
 
-                padding = '=' * (-len(snippet) % 4)  # 补齐 Base64 填充
-                decoded_bytes = base64.b64decode(snippet + padding)
+                # 检查字符串是否符合 Base64 编码规则
+                if not re.fullmatch(r'[A-Za-z0-9+/=]+', snippet):
+                    logger.warning(f"非法 Base64 字符，跳过 URL: {url}")
+                    return
+
+                # 补齐 Base64 填充（即使长度不是 4 的倍数）
+                padding = '=' * (-len(snippet) % 4)
+                snippet += padding
+
+                # 尝试解码 Base64 字符串
+                logger.debug(f"准备解码 Base64 字符串: {snippet}")
+                decoded_bytes = base64.b64decode(snippet, validate=True)
                 decoded_text = decoded_bytes.decode('utf-8', errors='ignore')
                 logger.debug(f"解码后的内容: {decoded_text}")
 
                 # 检查解码后的内容是否包含协议头
-                if is_base64_encoded(decoded_text):
+                if filter_base64(decoded_text):
                     new_v2_list.append(url)
             except (base64.binascii.Error, ValueError) as e:
                 logger.warning(f"Base64 解码失败 {url}: {e}")
