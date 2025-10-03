@@ -10,170 +10,173 @@ from retry import retry
 
 from pre_check import pre_check
 
+# 用于存放不同类型订阅的全局列表
 new_sub_list = []
 new_clash_list = []
 new_v2_list = []
 
 @logger.catch
 def yaml_check(path_yaml):
-    print(os.path.isfile(path_yaml))
-    if os.path.isfile(path_yaml): #存在，非第一次
-        with open(path_yaml,encoding="UTF-8") as f:
+    if os.path.isfile(path_yaml):
+        with open(path_yaml, encoding="utf-8") as f:
             dict_url = yaml.load(f, Loader=yaml.FullLoader)
+        logger.info(f"读取订阅文件成功：{path_yaml}")
     else:
         dict_url = {
-            "机场订阅":[],
-            "clash订阅":[],
-            "v2订阅":[]
+            "机场订阅": [],
+            "clash订阅": [],
+            "v2订阅": []
         }
-    # with open(path_yaml, 'w',encoding="utf-8") as f:
-    #     data = yaml.dump(dict_url, f,allow_unicode=True)
-    logger.info('读取文件成功')
+        logger.info(f"订阅文件不存在，初始化新的订阅字典")
     return dict_url
+
 
 @logger.catch
 def get_config():
-    with open('./config.yaml',encoding="UTF-8") as f:
+    with open('./config.yaml', encoding="utf-8") as f:
         data = yaml.load(f, Loader=yaml.FullLoader)
-    list_tg = data['tgchannel']
-    new_list = []
-    for url in list_tg:
-        a = url.split("/")[-1]
-        url = 'https://t.me/s/'+a
-        new_list.append(url)
-    return new_list
+    tg_channels = data.get('tgchannel', [])
+    channel_urls = [f'https://t.me/s/{url.split("/")[-1]}' for url in tg_channels]
+    logger.info(f"从 config.yaml 读取 TG 频道列表，数量：{len(channel_urls)}")
+    return channel_urls
+
 
 @logger.catch
 def get_channel_http(channel_url):
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36',
+        'Referer': channel_url,
+    }
     try:
-        with requests.post(channel_url) as resp:
-            data = resp.text
-        url_list = re.findall("https?://[-A-Za-z0-9+&@#/%?=~_|!:,.;]+[-A-Za-z0-9+&@#/%=~_|]", data)  # 使用正则表达式查找订阅链接并创建列表
-        logger.info(channel_url+'\t获取成功')
+        resp = requests.get(channel_url, headers=headers, timeout=10)
+        resp.raise_for_status()
+        data = resp.text
+        # 匹配所有 HTTP/HTTPS 链接
+        url_list = re.findall(r"https?://[-A-Za-z0-9+&@#/%?=~_|!:,.;]+[-A-Za-z0-9+&@#/%=~_|]", data)
+        logger.info(f"{channel_url} 获取成功，提取链接数: {len(url_list)}")
     except Exception as e:
-        logger.warning(channel_url+'\t获取失败')
-        logger.error(channel_url+e)
+        logger.warning(f"{channel_url} 获取失败: {e}")
         url_list = []
-    finally:
-        return url_list
+    return url_list
 
-# @logger.catch
-# def get_channel_http(channel_url):
-#     headers = {
-#         'Referer': 'https://t.me/s/wbnet',
-#         'sec-ch-ua-mobile': '?0',
-#         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36',
-#     }
-#     try:
-#         with requests.post(channel_url,headers=headers) as resp:
-#             data = resp.text
-#         url_list = re.findall("https?://[-A-Za-z0-9+&@#/%?=~_|!:,.;]+[-A-Za-z0-9+&@#/%=~_|]", data)  # 使用正则表达式查找订阅链接并创建列表
-#         logger.info(channel_url+'\t获取成功')
-#     except Exception as e:
-#         logger.error('channel_url',e)
-#         logger.warning(channel_url+'\t获取失败')
-#         url_list = []
-#     finally:
-#         return url_list
 
 def filter_base64(text):
-    ss = ['ss://','ssr://','vmess://','trojan://']
-    for i in ss:
-        if i in text:
-            return True
-    return False
+    protocols = ['ss://', 'ssr://', 'vmess://', 'trojan://']
+    return any(proto in text for proto in protocols)
 
 
 @logger.catch
-def sub_check(url,bar):
+def sub_check(url, progress_bar, semaphore):
     headers = {'User-Agent': 'ClashforWindows/0.18.1'}
-    with thread_max_num:
-        @retry(tries=2)
-        def start_check(url):
-            res=requests.get(url,headers=headers,timeout=5)#设置5秒超时防止卡死
-            if res.status_code == 200:
-                try: #有流量信息
-                    info = res.headers['subscription-userinfo']
-                    info_num = re.findall('\d+',info)
+
+    @retry(tries=2)
+    def start_check(url):
+        res = requests.get(url, headers=headers, timeout=5)
+        if res.status_code == 200:
+            try:
+                info = res.headers.get('subscription-userinfo')
+                if info:
+                    # 只要有流量信息就认定是机场订阅
                     new_sub_list.append(url)
-                except:
-                    # 判断是否为clash
-                    try:
-                        u = re.findall('proxies:', res.text)[0]
-                        if u == "proxies:":
-                            new_clash_list.append(url)
-                    except:
-                        # 判断是否为v2
-                        try:
-                            # 解密base64
-                            text = res.text[:64]
-                            text = base64.b64decode(text)
-                            text = str(text)
-                            if filter_base64(text):
-                                new_v2_list.append(url)
-                        # 均不是则非订阅链接
-                        except:
-                            pass
-            else:
+                    return
+            except Exception:
                 pass
+
+            # 尝试判断是否为clash订阅（yaml文件头部包含 proxies:）
+            if 'proxies:' in res.text:
+                new_clash_list.append(url)
+                return
+
+            # 尝试判断是否为v2订阅，解码base64后判断
+            try:
+                snippet = res.text.strip()[:64]
+                # 处理base64补齐问题
+                padding = '=' * (-len(snippet) % 4)
+                decoded_bytes = base64.b64decode(snippet + padding)
+                decoded_text = decoded_bytes.decode('utf-8', errors='ignore')
+                if filter_base64(decoded_text):
+                    new_v2_list.append(url)
+            except Exception:
+                pass
+
+    with semaphore:
         try:
             start_check(url)
-        except:
-            pass
-        bar.update(1)
+        except Exception as e:
+            logger.debug(f"订阅检测失败 {url}: {e}")
+        finally:
+            progress_bar.update(1)
 
-if __name__=='__main__':
-    path_yaml = pre_check()
-    dict_url = yaml_check(path_yaml)
-    # print(dict_url)
-    list_tg = get_config()
-    logger.info('读取config成功')
-    #循环获取频道订阅
-    url_list = []
-    for channel_url in list_tg:
-        temp_list = get_channel_http(channel_url)
-        url_list.extend(temp_list)
-    logger.info('开始筛选---')
-    thread_max_num = threading.Semaphore(32)  # 32线程
-    bar = tqdm(total=len(url_list), desc='订阅筛选：')
-    thread_list = []
-    for url in url_list:
-        # 为每个新URL创建线程
-        t = threading.Thread(target=sub_check, args=(url, bar))
-        # 加入线程池并启动
-        thread_list.append(t)
-        t.setDaemon(True)
-        t.start()
-    for t in thread_list:
-        t.join()
-    bar.close()
-    logger.info('筛选完成')
-    old_sub_list = dict_url['机场订阅']
-    old_clash_list = dict_url['clash订阅']
-    old_v2_list = dict_url['v2订阅']
-    new_sub_list.extend(old_sub_list)
-    new_clash_list.extend(old_clash_list)
-    new_v2_list.extend(old_v2_list)
-    new_sub_list = list(set(new_sub_list))
-    new_clash_list = list(set(new_clash_list))
-    new_v2_list = list(set(new_v2_list))
-    dict_url.update({'机场订阅':new_sub_list})
-    dict_url.update({'clash订阅': new_clash_list})
-    dict_url.update({'v2订阅': new_v2_list})
-    with open(path_yaml, 'w',encoding="utf-8") as f:
-        data = yaml.dump(dict_url, f,allow_unicode=True)
+
+def save_subscriptions_as_txt(file_path, subscriptions_dict):
+    """
+    把订阅列表保存成纯文本格式，每类订阅有标题，逐行写入
+    """
+    with open(file_path, 'w', encoding='utf-8') as f:
+        for category in ['机场订阅', 'clash订阅', 'v2订阅']:
+            f.write(f"=== {category} ===\n")
+            for url in subscriptions_dict.get(category, []):
+                f.write(url + '\n')
+            f.write('\n')  # 分类间空行
+
+
 def send_telegram_file(bot_token, chat_id, file_path):
     url = f"https://api.telegram.org/bot{bot_token}/sendDocument"
-    with open(file_path, "rb") as f:
-        files = {'document': f}
-        data = {'chat_id': chat_id}
-        response = requests.post(url, files=files, data=data)
-    if response.status_code == 200:
-        print("✅ 文件发送成功")
-    else:
-        print("❌ 文件发送失败", response.text)
-send_telegram_file(
-    bot_token=os.getenv("TG_BOT_TOKEN"),
-    chat_id=os.getenv("TG_CHAT_ID"),
-    file_path=path_yaml
-)
+    try:
+        with open(file_path, "rb") as f:
+            files = {'document': f}
+            data = {'chat_id': chat_id}
+            response = requests.post(url, files=files, data=data)
+        if response.status_code == 200:
+            logger.success("✅ 文件发送成功")
+        else:
+            logger.error(f"❌ 文件发送失败: {response.text}")
+    except Exception as e:
+        logger.error(f"发送文件异常: {e}")
+
+
+if __name__ == '__main__':
+    path_yaml = pre_check()
+    dict_url = yaml_check(path_yaml)
+    tg_channels = get_config()
+
+    logger.info('开始抓取 Telegram 频道订阅链接...')
+    all_urls = []
+    for channel_url in tg_channels:
+        urls = get_channel_http(channel_url)
+        all_urls.extend(urls)
+
+    logger.info(f'总共抓取到订阅链接 {len(all_urls)} 条，开始筛选...')
+
+    semaphore = threading.Semaphore(32)  # 限制最大线程数
+    progress_bar = tqdm(total=len(all_urls), desc='订阅筛选')
+
+    threads = []
+    for url in all_urls:
+        t = threading.Thread(target=sub_check, args=(url, progress_bar, semaphore))
+        t.daemon = True
+        t.start()
+        threads.append(t)
+
+    for t in threads:
+        t.join()
+
+    progress_bar.close()
+    logger.info('筛选完成，准备更新订阅内容')
+
+    # 合并旧订阅，去重
+    dict_url['机场订阅'] = list(set(new_sub_list + dict_url.get('机场订阅', [])))
+    dict_url['clash订阅'] = list(set(new_clash_list + dict_url.get('clash订阅', [])))
+    dict_url['v2订阅'] = list(set(new_v2_list + dict_url.get('v2订阅', [])))
+
+    # 保存为txt文件，文件名改为同目录同名txt
+    path_txt = os.path.splitext(path_yaml)[0] + '.txt'
+    save_subscriptions_as_txt(path_txt, dict_url)
+    logger.success(f'订阅文本文件已保存：{path_txt}')
+
+    # 发送txt文件到Telegram
+    send_telegram_file(
+        bot_token=os.getenv("TG_BOT_TOKEN"),
+        chat_id=os.getenv("TG_CHAT_ID"),
+        file_path=path_txt
+    )
