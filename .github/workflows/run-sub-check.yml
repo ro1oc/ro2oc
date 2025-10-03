@@ -27,7 +27,7 @@ jobs:
         run: python main.py
 
       - name: Upload result
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: updated-subscription
           path: |
