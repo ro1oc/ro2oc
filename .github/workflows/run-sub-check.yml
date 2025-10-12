@@ -1,8 +1,8 @@
 name: Auto Run Sub Checker
 
 on:
-  schedule:
-    - cron: '0 */6 * * *' # 每 6 小时运行一次
+#  schedule:
+#    - cron: '0 */6 * * *' # 每 6 小时运行一次
   workflow_dispatch: # 允许手动触发
 
 jobs:
