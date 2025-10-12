@@ -2,13 +2,13 @@ import re
 import os
 import yaml
 import threading
-import base64
 import requests
 from loguru import logger
 from tqdm import tqdm
 from retry import retry
 from urllib.parse import quote
-from pre_check import pre_check, get_sub_all
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from threading import Lock
 
 # 常量配置
 RE_STR = r"https?://[-A-Za-z0-9+&@#/%?=~_|!:,.;]+[-A-Za-z0-9+&@#/%=~_|]"
@@ -24,6 +24,8 @@ play_list = []
 airport_list = []
 protocol_nodes = []  # 存储抓取到的协议节点
 
+# 锁对象
+sub_list_lock = Lock()
 
 @logger.catch
 def load_sub_yaml(path_yaml):
@@ -38,7 +40,6 @@ def load_sub_yaml(path_yaml):
         "开心玩耍": []
     }
 
-
 @logger.catch
 def get_config():
     """读取配置文件中的 tgchannel 配置"""
@@ -46,7 +47,7 @@ def get_config():
         data = yaml.load(f, Loader=yaml.FullLoader)
     return ['https://t.me/s/' + url.split("/")[-1] for url in data['tgchannel']]
 
-
+@retry(tries=3, delay=2)
 @logger.catch
 def get_channel_http(channel_url):
     """获取频道链接"""
@@ -67,45 +68,44 @@ def get_channel_http(channel_url):
         logger.warning(f'{channel_url} 获取失败: {e}')
     return url_list
 
-
 def filter_base64(text):
     """检查是否为 SS、SSR、Vmess 或 Trojan 类型链接"""
     return any(proto in text for proto in ['ss://', 'ssr://', 'vmess://', 'trojan://', 'vless://'])
 
-
-@retry(tries=2)
+@retry(tries=3, delay=2)
 @logger.catch
 def url_check_valid(target, url, bar):
     """检查订阅链接是否有效"""
-    with threading.Semaphore(THREAD_MAX_NUM):
-        for check_url in CHECK_URL_LIST:
-            try:
-                url_encoded = quote(url, safe='')
-                check_url_string = CHECK_NODE_URL_STR.format(check_url, target, url_encoded)
-                res = requests.get(check_url_string, timeout=15)
+    for check_url in CHECK_URL_LIST:
+        try:
+            url_encoded = quote(url, safe='')
+            check_url_string = CHECK_NODE_URL_STR.format(check_url, target, url_encoded)
+            res = requests.get(check_url_string, timeout=15)
 
-                if res.status_code == 200:
-                    airport_list.append(url)
-                    break
-            except Exception as e:
-                logger.warning(f'解析失败: {url}, 错误: {e}')
-        bar.update(1)
+            if res.status_code == 200:
+                airport_list.append(url)
+                break
+        except Exception as e:
+            logger.warning(f'解析失败: {url}, 错误: {e}')
+    bar.update(1)
 
-
-@retry(tries=2)
+@retry(tries=3, delay=2)
 @logger.catch
 def sub_check(url, bar):
     """检查订阅内容有效性"""
     headers = {'User-Agent': 'ClashforWindows/0.18.1'}
-    with threading.Semaphore(THREAD_MAX_NUM):
-        try:
-            res = requests.get(url, headers=headers, timeout=10)
-            if res.status_code == 200:
-                process_subscription(res, url)
-            bar.update(1)
-        except requests.RequestException as e:
-            logger.error(f'{url} 请求失败: {e}')
-
+    try:
+        res = requests.get(url, headers=headers, timeout=10)
+        res.raise_for_status()  # 如果响应状态码不是 200，会抛出异常
+        if res.status_code == 200:
+            process_subscription(res, url)
+        bar.update(1)
+    except requests.Timeout:
+        logger.warning(f'{url} 请求超时')
+    except requests.ConnectionError:
+        logger.warning(f'{url} 网络连接失败')
+    except requests.RequestException as e:
+        logger.error(f'{url} 请求失败: {e}')
 
 def process_subscription(res, url):
     """处理订阅响应，分类存储有效链接"""
@@ -117,15 +117,16 @@ def process_subscription(res, url):
             upload, download, total = map(int, re.findall(r'\d+', info))
             unused = (total - upload - download) / 1024 / 1024 / 1024  # GB
             if unused > 0:
-                new_sub_list.append(url)
-                play_list.append(f'可用流量: {unused:.2f} GB - {url}')
+                with sub_list_lock:
+                    new_sub_list.append(url)
+                    play_list.append(f'可用流量: {unused:.2f} GB - {url}')
     except Exception:
         # 判断是否为 Clash 或 V2
-        if 'proxies:' in res.text:
-            new_clash_list.append(url)
-        elif filter_base64(res.text[:64]):
-            new_v2_list.append(url)
-
+        with sub_list_lock:
+            if 'proxies:' in res.text:
+                new_clash_list.append(url)
+            elif filter_base64(res.text[:64]):
+                new_v2_list.append(url)
 
 def get_url_form_channel():
     """从配置文件中获取 TG 频道的订阅链接"""
@@ -133,7 +134,6 @@ def get_url_form_channel():
     for channel_url in get_config():
         url_list.extend(get_channel_http(channel_url))
     return url_list
-
 
 def get_url_form_yaml(yaml_file):
     """从 YAML 文件中获取订阅链接"""
@@ -145,7 +145,6 @@ def get_url_form_yaml(yaml_file):
     all_urls.extend(dict_url['开心玩耍'])
     return re.findall(RE_STR, str(all_urls))
 
-
 def write_protocol_nodes_to_txt():
     """将协议节点输出到文件"""
     if protocol_nodes:
@@ -153,29 +152,24 @@ def write_protocol_nodes_to_txt():
             f.write("\n".join(protocol_nodes))
         logger.info(f'协议节点已写入到 protocol_nodes.txt 文件，共 {len(protocol_nodes)} 条')
 
-
 def start_check(url_list):
     """开始检查所有的订阅链接"""
     logger.info('开始筛选订阅链接...')
-    bar = tqdm(total=len(url_list), desc='订阅筛选：')
-    thread_list = []
-    for url in url_list:
-        t = threading.Thread(target=sub_check, args=(url, bar))
-        thread_list.append(t)
-        t.setDaemon(True)
-        t.start()
-    for t in thread_list:
-        t.join()
-    bar.close()
+    with ThreadPoolExecutor(max_workers=THREAD_MAX_NUM) as executor:
+        futures = {executor.submit(sub_check, url, None): url for url in url_list}
+        for future in as_completed(futures):
+            url = futures[future]
+            try:
+                future.result()  # 获取任务的返回结果
+            except Exception as e:
+                logger.error(f'URL检查失败: {url}, 错误: {e}')
     logger.info('筛选完成')
-
 
 def write_url_list(url_list, path_yaml):
     """将有效的订阅链接写入文件"""
     url_file = path_yaml.replace('.yaml', '_url_check.txt')
     with open(url_file, 'w') as f:
         f.write('\n'.join(str(item) for item in url_list))
-
 
 def write_sub_store(yaml_file):
     """将订阅链接和状态写入文件"""
@@ -188,7 +182,6 @@ def write_sub_store(yaml_file):
     with open(url_file, 'w') as f:
         f.write(f"-- play_list --\n\n{'\n'.join(play_list)}\n\n")
         f.write(f"-- sub_list --\n\n{'\n'.join(sub_list)}\n\n")
-
 
 def sub_update(url_list, path_yaml):
     """更新订阅列表"""
