@@ -7,176 +7,230 @@ import requests
 from loguru import logger
 from tqdm import tqdm
 from retry import retry
+from urllib.parse import quote
+from pre_check import pre_check, get_sub_all
 
-from pre_check import pre_check
+# 常量配置
+RE_STR = r"https?://[-A-Za-z0-9+&@#/%?=~_|!:,.;]+[-A-Za-z0-9+&@#/%=~_|]"
+THREAD_MAX_NUM = 32  # 线程数
+CHECK_NODE_URL_STR = "https://{}/sub?target={}&url={}&insert=false&config=config%2FACL4SSR.ini"
+CHECK_URL_LIST = ['api.dler.io', 'sub.xeton.dev', 'sub.id9.cc', 'sub.maoxiongnet.com']
 
-# 用于存放不同类型订阅的全局列表
+# 全局数据
 new_sub_list = []
 new_clash_list = []
 new_v2_list = []
+play_list = []
+airport_list = []
+
 
 @logger.catch
-def yaml_check(path_yaml):
+def load_sub_yaml(path_yaml):
+    """加载 YAML 配置文件"""
     if os.path.isfile(path_yaml):
-        with open(path_yaml, encoding="utf-8") as f:
-            dict_url = yaml.load(f, Loader=yaml.FullLoader)
-        logger.info(f"读取订阅文件成功：{path_yaml}")
-    else:
-        dict_url = {
-            "机场订阅": [],
-            "clash订阅": [],
-            "v2订阅": []
-        }
-        logger.info(f"订阅文件不存在，初始化新的订阅字典")
-    return dict_url
+        with open(path_yaml, encoding="UTF-8") as f:
+            return yaml.load(f, Loader=yaml.FullLoader)
+    return {
+        "机场订阅": [],
+        "clash订阅": [],
+        "v2订阅": [],
+        "开心玩耍": []
+    }
 
 
 @logger.catch
 def get_config():
-    with open('./config.yaml', encoding="utf-8") as f:
+    """读取配置文件中的 tgchannel 配置"""
+    with open('./config.yaml', encoding="UTF-8") as f:
         data = yaml.load(f, Loader=yaml.FullLoader)
-    tg_channels = data.get('tgchannel', [])
-    channel_urls = [f'https://t.me/s/{url.split("/")[-1]}' for url in tg_channels]
-    logger.info(f"从 config.yaml 读取 TG 频道列表，数量：{len(channel_urls)}")
-    return channel_urls
+    return ['https://t.me/s/' + url.split("/")[-1] for url in data['tgchannel']]
 
 
 @logger.catch
 def get_channel_http(channel_url):
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36',
-        'Referer': channel_url,
-    }
+    """获取频道链接"""
+    url_list = []
     try:
-        resp = requests.get(channel_url, headers=headers, timeout=10)
-        resp.raise_for_status()
-        data = resp.text
-        # 匹配所有 HTTP/HTTPS 链接
-        url_list = re.findall(r"https?://[-A-Za-z0-9+&@#/%?=~_|!:,.;]+[-A-Za-z0-9+&@#/%=~_|]", data)
-        logger.info(f"{channel_url} 获取成功，提取链接数: {len(url_list)}")
+        response = requests.post(channel_url)
+        data = response.text
+        all_url_list = re.findall(RE_STR, data)
+        filter_strings = ["//t.me/", "cdn-telegram.org"]
+        url_list = [item for item in all_url_list if not any(fs in item for fs in filter_strings)]
+        logger.info(f'{channel_url} 获取成功，数据量: {len(url_list)}')
     except Exception as e:
-        logger.warning(f"{channel_url} 获取失败: {e}")
-        url_list = []
+        logger.warning(f'{channel_url} 获取失败: {e}')
     return url_list
 
 
 def filter_base64(text):
-    protocols = ['ss://', 'ssr://', 'vmess://', 'trojan://']
-    return any(proto in text for proto in protocols)
+    """检查是否为 SS、SSR、Vmess 或 Trojan 类型链接"""
+    return any(proto in text for proto in ['ss://', 'ssr://', 'vmess://', 'trojan://'])
 
 
+@retry(tries=2)
 @logger.catch
-def sub_check(url, progress_bar, semaphore):
+def url_check_valid(target, url, bar):
+    """检查订阅链接是否有效"""
+    with threading.Semaphore(THREAD_MAX_NUM):
+        for check_url in CHECK_URL_LIST:
+            try:
+                url_encoded = quote(url, safe='')
+                check_url_string = CHECK_NODE_URL_STR.format(check_url, target, url_encoded)
+                res = requests.get(check_url_string, timeout=15)
+
+                if res.status_code == 200:
+                    airport_list.append(url)
+                    break
+            except Exception as e:
+                logger.warning(f'解析失败: {url}, 错误: {e}')
+        bar.update(1)
+
+
+@retry(tries=2)
+@logger.catch
+def sub_check(url, bar):
+    """检查订阅内容有效性"""
     headers = {'User-Agent': 'ClashforWindows/0.18.1'}
-
-    @retry(tries=2)
-    def start_check(url):
-        res = requests.get(url, headers=headers, timeout=5)
-        if res.status_code == 200:
-            try:
-                info = res.headers.get('subscription-userinfo')
-                if info:
-                    # 只要有流量信息就认定是机场订阅
-                    new_sub_list.append(url)
-                    return
-            except Exception:
-                pass
-
-            # 尝试判断是否为clash订阅（yaml文件头部包含 proxies:）
-            if 'proxies:' in res.text:
-                new_clash_list.append(url)
-                return
-
-            # 尝试判断是否为v2订阅，解码base64后判断
-            try:
-                snippet = res.text.strip()[:64]
-                # 处理base64补齐问题
-                padding = '=' * (-len(snippet) % 4)
-                decoded_bytes = base64.b64decode(snippet + padding)
-                decoded_text = decoded_bytes.decode('utf-8', errors='ignore')
-                if filter_base64(decoded_text):
-                    new_v2_list.append(url)
-            except Exception:
-                pass
-
-    with semaphore:
+    with threading.Semaphore(THREAD_MAX_NUM):
         try:
-            start_check(url)
-        except Exception as e:
-            logger.debug(f"订阅检测失败 {url}: {e}")
-        finally:
-            progress_bar.update(1)
+            res = requests.get(url, headers=headers, timeout=10)
+            if res.status_code == 200:
+                process_subscription(res, url)
+            bar.update(1)
+        except requests.RequestException as e:
+            logger.error(f'{url} 请求失败: {e}')
 
 
-def save_subscriptions_as_txt(file_path, subscriptions_dict):
-    """
-    把订阅列表保存成纯文本格式，每类订阅有标题，逐行写入
-    """
-    with open(file_path, 'w', encoding='utf-8') as f:
-        for category in ['机场订阅', 'clash订阅', 'v2订阅']:
-            f.write(f"=== {category} ===\n")
-            for url in subscriptions_dict.get(category, []):
-                f.write(url + '\n')
-            f.write('\n')  # 分类间空行
-
-
-def send_telegram_file(bot_token, chat_id, file_path):
-    url = f"https://api.telegram.org/bot{bot_token}/sendDocument"
+def process_subscription(res, url):
+    """处理订阅响应，分类存储有效链接"""
+    global new_sub_list, new_clash_list, new_v2_list, play_list
     try:
-        with open(file_path, "rb") as f:
-            files = {'document': f}
-            data = {'chat_id': chat_id}
-            response = requests.post(url, files=files, data=data)
-        if response.status_code == 200:
-            logger.success("✅ 文件发送成功")
-        else:
-            logger.error(f"❌ 文件发送失败: {response.text}")
+        # 有流量信息
+        info = res.headers.get('subscription-userinfo')
+        if info:
+            upload, download, total = map(int, re.findall(r'\d+', info))
+            unused = (total - upload - download) / 1024 / 1024 / 1024  # GB
+            if unused > 0:
+                new_sub_list.append(url)
+                play_list.append(f'可用流量: {unused:.2f} GB - {url}')
     except Exception as e:
-        logger.error(f"发送文件异常: {e}")
+        # 判断是否为 Clash 或 V2
+        if 'proxies:' in res.text:
+            new_clash_list.append(url)
+        elif filter_base64(res.text[:64]):
+            new_v2_list.append(url)
+
+
+def get_url_form_channel():
+    """从配置文件中获取 TG 频道的订阅链接"""
+    url_list = []
+    for channel_url in get_config():
+        url_list.extend(get_channel_http(channel_url))
+    return url_list
+
+
+def get_url_form_yaml(yaml_file):
+    """从 YAML 文件中获取订阅链接"""
+    dict_url = load_sub_yaml(yaml_file)
+    all_urls = []
+    all_urls.extend(dict_url['机场订阅'])
+    all_urls.extend(dict_url['clash订阅'])
+    all_urls.extend(dict_url['v2订阅'])
+    all_urls.extend(dict_url['开心玩耍'])
+    return re.findall(RE_STR, str(all_urls))
+
+
+def start_check(url_list):
+    """开始检查所有的订阅链接"""
+    logger.info('开始筛选订阅链接...')
+    bar = tqdm(total=len(url_list), desc='订阅筛选：')
+    thread_list = []
+    for url in url_list:
+        t = threading.Thread(target=sub_check, args=(url, bar))
+        thread_list.append(t)
+        t.setDaemon(True)
+        t.start()
+    for t in thread_list:
+        t.join()
+    bar.close()
+    logger.info('筛选完成')
+
+
+def write_url_list(url_list, path_yaml):
+    """将有效的订阅链接写入文件"""
+    url_file = path_yaml.replace('.yaml', '_url_check.txt')
+    with open(url_file, 'w') as f:
+        f.write('\n'.join(str(item) for item in url_list))
+
+
+def write_sub_store(yaml_file):
+    """将订阅链接和状态写入文件"""
+    logger.info('写入 sub_store 文件...')
+    dict_url = load_sub_yaml(yaml_file)
+    play_list = dict_url['开心玩耍']
+    sub_list = dict_url['机场订阅']
+
+    url_file = yaml_file.replace('.yaml', '_sub_store.txt')
+    with open(url_file, 'w') as f:
+        f.write(f"-- play_list --\n\n{'\n'.join(play_list)}\n\n")
+        f.write(f"-- sub_list --\n\n{'\n'.join(sub_list)}\n\n")
+
+
+def sub_update(url_list, path_yaml):
+    """更新订阅列表"""
+    logger.info('开始更新订阅...')
+    if not url_list:
+        logger.info('没有需要更新的数据')
+        return
+
+    global new_sub_list, new_clash_list, new_v2_list, play_list
+    new_sub_list, new_clash_list, new_v2_list, play_list = [], [], [], []
+
+    check_url_list = list(set(url_list))
+    write_url_list(check_url_list, path_yaml)
+    start_check(check_url_list)
+
+    dict_url = load_sub_yaml(path_yaml)
+    old_sub_list = dict_url['机场订阅']
+    old_clash_list = dict_url['clash订阅']
+    old_v2_list = dict_url['v2订阅']
+    
+    # 更新列表，去重并排序
+    new_sub_list.extend(old_sub_list)
+    new_clash_list.extend(old_clash_list)
+    new_v2_list.extend(old_v2_list)
+    new_sub_list = sorted(set(new_sub_list))
+    new_clash_list = sorted(set(new_clash_list))
+    new_v2_list = sorted(set(new_v2_list))
+    play_list = sorted(set(play_list))
+
+    dict_url.update({
+        '机场订阅': new_sub_list,
+        'clash订阅': new_clash_list,
+        'v2订阅': new_v2_list,
+        '开心玩耍': play_list
+    })
+
+    with open(path_yaml, 'w', encoding="utf-8") as f:
+        yaml.dump(dict_url, f, allow_unicode=True)
+
+
+def merge_sub():
+    """合并更新所有订阅"""
+    all_yaml = get_sub_all()
+    path_yaml = pre_check()
+    url_list = get_url_form_yaml(all_yaml) + get_url_form_yaml(path_yaml)
+    sub_update(url_list, all_yaml)
+    write_sub_store(all_yaml)
+
+
+def update_today_sub():
+    """更新当天的订阅"""
+    url_list = get_url_form_channel()
+    path_yaml = pre_check()
+    sub_update(url_list, path_yaml)
 
 
 if __name__ == '__main__':
-    path_yaml = pre_check()
-    dict_url = yaml_check(path_yaml)
-    tg_channels = get_config()
-
-    logger.info('开始抓取 Telegram 频道订阅链接...')
-    all_urls = []
-    for channel_url in tg_channels:
-        urls = get_channel_http(channel_url)
-        all_urls.extend(urls)
-
-    logger.info(f'总共抓取到订阅链接 {len(all_urls)} 条，开始筛选...')
-
-    semaphore = threading.Semaphore(32)  # 限制最大线程数
-    progress_bar = tqdm(total=len(all_urls), desc='订阅筛选')
-
-    threads = []
-    for url in all_urls:
-        t = threading.Thread(target=sub_check, args=(url, progress_bar, semaphore))
-        t.daemon = True
-        t.start()
-        threads.append(t)
-
-    for t in threads:
-        t.join()
-
-    progress_bar.close()
-    logger.info('筛选完成，准备更新订阅内容')
-
-    # 合并旧订阅，去重
-    dict_url['机场订阅'] = list(set(new_sub_list + dict_url.get('机场订阅', [])))
-    dict_url['clash订阅'] = list(set(new_clash_list + dict_url.get('clash订阅', [])))
-    dict_url['v2订阅'] = list(set(new_v2_list + dict_url.get('v2订阅', [])))
-
-    # 保存为txt文件，文件名改为同目录同名txt
-    path_txt = os.path.splitext(path_yaml)[0] + '.txt'
-    save_subscriptions_as_txt(path_txt, dict_url)
-    logger.success(f'订阅文本文件已保存：{path_txt}')
-
-    # 发送txt文件到Telegram
-    send_telegram_file(
-        bot_token=os.getenv("TG_BOT_TOKEN"),
-        chat_id=os.getenv("TG_CHAT_ID"),
-        file_path=path_txt
-    )
+    update_today_sub()
+    merge_sub()
