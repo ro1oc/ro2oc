@@ -26,6 +26,7 @@ https://sub.bujidao.org/sub?key=YRXf1SmtPOTs8aWTIxwGOP83ONjmYLo5
 https://lansecs.top/api/v1/client/subscribe?token=c8284b9516616521e3fab8ea329d1163
 http://x2b.eans.top/api/v1/client/subscribe?token=038a7e307b9d8489ac62bdc17fe4efe6
 http://x2b.eans.top/api/v1/client/subscribe?token=fd9c9fc32d43be9c7a75ef72cd73e53f
+https://mc.jiedianxielou.workers.dev/api/v1/client/subscribe?token=22a82bc9a50b426b944bdeca4c4c2168
 http://x2b.eans.top/api/v1/client/subscribe?token=d7096344a577d0e7d16c3051a3902adc
 http://x2b.eans.top/api/v1/client/subscribe?token=510fb0101effe3bee10146fa4566b8b5
 http://x2b.eans.top/api/v1/client/subscribe?token=c36d6144175f9ab3d4d8d7d804d18408
@@ -52,6 +53,7 @@ https://x2b.eans.top/api/v1/client/subscribe?token=a96873ca7d3431adc252828f6ef64
 http://x2b.eans.top/api/v1/client/subscribe?token=6d656e8a542c73bd01f4dc0f12c88bc9
 http://x2b.eans.top/api/v1/client/subscribe?token=cd105ed030adeceb0291a1f603b99387
 https://323d.anyway.best/api/v1/client/subscribe?token=44ac20d0fe32eb9cb5e3f2b65e4c94e1
+https://eeeeee.666461.xyz/MU1ZHrK2SKM/bce0c7cb-08d1-46a7-b77b-7bff8b46252f/#default
 https://store.kakocloud.pro/api/v1/client/subscribe?token=864ea20e358408b8a1402390daed8905
 https://sub3.sunglow.cfd/jiangjiang?token=f64e20dda15f72ed04d8a8064870c9f1
 https://lansecs.top/api/v1/client/subscribe?token=58de9b236fa1f3e85dcc7cba1c008b34
@@ -85,7 +87,6 @@ https://xbd.iftballs.com/api/v1/client/subscribe?token=f3a7081ba5c61ae09de45d2b4
 https://xbd.iftballs.com/api/v1/client/subscribe?token=f57a6315ffbd7b957a7321675cb298e5
 https://xbd.iftballs.com/api/v1/client/subscribe?token=fb101e241426cfb652bc42d774ebbe22
 https://lansecs.top/api/v1/client/subscribe?token=068463de5b8ac6bb9664e21be84711f8
-https://mc.jiedianxielou.workers.dev/api/v1/client/subscribe?token=22a82bc9a50b426b944bdeca4c4c2168
 https://rss.zyfx6.xyz/clash/
 https://sub.zyfx6.xyz/share/file/%E6%B0%B8%E4%B9%85%E8%AE%A2%E9%98%85%40txwl666?token=clash
 https://sub.zyfx6.xyz/share/file/%E6%B0%B8%E4%B9%85%E8%AE%A2%E9%98%85@txwl666?token=clash
