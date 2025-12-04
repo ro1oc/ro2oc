@@ -13,7 +13,6 @@ https://aa.diaomaocloud.workers.dev/diaomaoyun1980
 https://sub.fuckyou.pp.ua/?url=freenodes
 https://aa.diaomaocloud.workers.dev/diaomao2222
 https://x2b.eans.top/api/v1/client/subscribe?token=8930b742ec9bd7b9eec9f7dd58c090e5
-https://mc.jiedianxielou.workers.dev/api/v1/client/subscribe?token=22a82bc9a50b426b944bdeca4c4c2168
 http://x2b.eans.top/api/v1/client/subscribe?token=01750dfe2cb5be6dce5e1576bfe466f0
 https://562dd2da-d6a6-49ca-8ec2-f65fbb4b2e2c.xn--l6qx3lcvp58x.com/api/v1/client/subscribe?token=e3cfcced59c60d67198c8e585c785913
 https://x2b.eans.top/api/v1/client/subscribe?token=0d92707b16b57082a0975456327744c1
@@ -21,6 +20,7 @@ http://x2b.eans.top/api/v1/client/subscribe?token=1dbbb987421cc669a3171a2579105d
 https://sub.966888.xyz/api/v1/client/subscribe?token=2c53cb842bd6e2366782444aac8cfc16
 https://sub.966888.xyz/api/v1/client/subscribe?token=2c53cb842bd6e2366782444aac8cfc16&amp;flag
 https://sub.966888.xyz/api/v1/client/subscribe?token=2c53cb842bd6e2366782444aac8cfc16&amp;flag%EF%BC%9D%E8%81%94%E9%80%9Awifi%E4%B9%9F%E6%98%AF%E8%B6%85%E6%97%B6%E4%B8%8D%E8%83%BD%E7%94%A8
+https://mc.jiedianxielou.workers.dev/api/v1/client/subscribe?token=22a82bc9a50b426b944bdeca4c4c2168
 https://x2b.eans.top/api/v1/client/subscribe?token=96fc743c5a8ab18b8e14e4dfcb9b45bf
 https://x2b.eans.top/api/v1/client/subscribe?token=b11ae0d9ce89182d8fccb16a9f4ef617
 http://x2b.eans.top/api/v1/client/subscribe?token=81f7fb76a46b5dfed793259d0c984e9e
@@ -64,8 +64,8 @@ https://api.apihs.cfd/bpjc?token=ccad9bf64bc299dc2a6af89ff95e560c
 https://sub666.yydzx.xyz/sub/e228a4f0e76cc057/clash
 https://liangxin.xyz/api/v1/liangxin?OwO=ddf58b3be8b6039c94babe029095aa11
 http://x2b.eans.top/api/v1/client/subscribe?token=a5136c42b9e36ca7e6ca530babc381a6
-https://api.apihs.cfd/bpjc?token=4777701709a0c608a10249b7fecd0719
 https://cp.iranhope.org/sub/jnir_pub012/d2a6bb6d19c13988a0030f63d8e76aa4
+https://api.apihs.cfd/bpjc?token=4777701709a0c608a10249b7fecd0719
 https://xbd.iftballs.com/api/v1/client/subscribe?token=06c2f3d8b56b92550b416161f28462aa
 https://xbd.iftballs.com/api/v1/client/subscribe?token=06fc3e8c6cc3eeae1314b8d6a114809c
 https://xbd.iftballs.com/api/v1/client/subscribe?token=3b23d12fe73f4ea1129edf359b447335
