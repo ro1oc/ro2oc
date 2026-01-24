@@ -29,11 +29,17 @@ valid_subscriptions = set()
 # ================== 工具函数 ==================
 
 def ensure_sub_dir():
-    os.makedirs("sub", exist_ok=True)
+    now = datetime.now()
+    year = now.strftime("%Y")
+    month = now.strftime("%m")
+    os.makedirs(os.path.join("sub", year, month), exist_ok=True)
 
 def gen_output_filename():
-    ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    return os.path.join("sub", f"{ts}.txt")
+    now = datetime.now()
+    year = now.strftime("%Y")
+    month = now.strftime("%m")
+    ts = now.strftime("%Y-%m-%d_%H-%M-%S")
+    return os.path.join("sub", year, month, f"{ts}.txt")
 
 @logger.catch
 def load_sub_yaml(path_yaml):
