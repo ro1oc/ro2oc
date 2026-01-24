@@ -44,6 +44,15 @@ jobs:
     - name: 执行任务
       run: |
         python ./main.py
+    - name: Clean old subscription files (older than 3 months)
+      run: |
+        echo "Cleaning files older than 90 days in sub/"
+        find sub -type f -mtime +90 -print -delete
+
+    - name: Remove empty sub directories
+      run: |
+        find sub -type d -empty -print -delete
+
     - name: Commit
       run: |
         git config --global user.name "GitHub Actions"
